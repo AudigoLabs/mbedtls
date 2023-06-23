@@ -8587,10 +8587,12 @@ int mbedtls_ssl_read( mbedtls_ssl_context *ssl, unsigned char *buf, size_t len )
  * corresponding return code is 0 on success.
  */
 static int ssl_write_real( mbedtls_ssl_context *ssl,
-                           const unsigned char *buf, size_t len )
+                           const unsigned char *buf1, size_t len1,
+                           const unsigned char *buf2, size_t len2 )
 {
     int ret = mbedtls_ssl_get_max_out_record_payload( ssl );
     const size_t max_len = (size_t) ret;
+    size_t len = len1 + len2;
 
     if( ret < 0 )
     {
@@ -8610,7 +8612,7 @@ static int ssl_write_real( mbedtls_ssl_context *ssl,
         }
         else
 #endif
-            len = max_len;
+        len = max_len;
     }
 
     if( ssl->out_left != 0 )
@@ -8636,7 +8638,18 @@ static int ssl_write_real( mbedtls_ssl_context *ssl,
          */
         ssl->out_msglen  = len;
         ssl->out_msgtype = MBEDTLS_SSL_MSG_APPLICATION_DATA;
-        memcpy( ssl->out_msg, buf, len );
+        if (len < len1) {
+            len1 = len;
+        }
+        if (len < len1 + len2) {
+            len2 = len > len1 ? len - len1 : 0;
+        }
+        if (len1) {
+            memcpy( ssl->out_msg, buf1, len1 );
+        }
+        if (len2) {
+            memcpy( &ssl->out_msg[len1], buf2, len2 );
+        }
 
         if( ( ret = mbedtls_ssl_write_record( ssl, SSL_FORCE_FLUSH ) ) != 0 )
         {
@@ -8668,17 +8681,17 @@ static int ssl_write_split( mbedtls_ssl_context *ssl,
         mbedtls_cipher_get_cipher_mode( &ssl->transform_out->cipher_ctx_enc )
                                 != MBEDTLS_MODE_CBC )
     {
-        return( ssl_write_real( ssl, buf, len ) );
+        return( ssl_write_real( ssl, buf, len, NULL, 0 ) );
     }
 
     if( ssl->split_done == 0 )
     {
-        if( ( ret = ssl_write_real( ssl, buf, 1 ) ) <= 0 )
+        if( ( ret = ssl_write_real( ssl, buf, 1, NULL, 0 ) ) <= 0 )
             return( ret );
         ssl->split_done = 1;
     }
 
-    if( ( ret = ssl_write_real( ssl, buf + 1, len - 1 ) ) <= 0 )
+    if( ( ret = ssl_write_real( ssl, buf + 1, len - 1, NULL, 0 ) ) <= 0 )
         return( ret );
     ssl->split_done = 0;
 
@@ -8690,6 +8703,10 @@ static int ssl_write_split( mbedtls_ssl_context *ssl,
  * Write application data (public-facing wrapper)
  */
 int mbedtls_ssl_write( mbedtls_ssl_context *ssl, const unsigned char *buf, size_t len )
+{
+    return mbedtls_ssl_write2(ssl, buf, len, NULL, 0);
+}
+int mbedtls_ssl_write2( mbedtls_ssl_context *ssl, const unsigned char *buf1, size_t len1, const unsigned char *buf2, size_t len2 )
 {
     int ret;
 
@@ -8716,9 +8733,12 @@ int mbedtls_ssl_write( mbedtls_ssl_context *ssl, const unsigned char *buf, size_
     }
 
 #if defined(MBEDTLS_SSL_CBC_RECORD_SPLITTING)
-    ret = ssl_write_split( ssl, buf, len );
+    if (buf2) {
+        // TODO: This is not currently supported
+        return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
+    }
 #else
-    ret = ssl_write_real( ssl, buf, len );
+    ret = ssl_write_real( ssl, buf1, len1, buf2, len2 );
 #endif
 
     MBEDTLS_SSL_DEBUG_MSG( 2, ( "<= write" ) );

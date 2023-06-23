@@ -3160,6 +3160,11 @@ int mbedtls_ssl_read( mbedtls_ssl_context *ssl, unsigned char *buf, size_t len )
 int mbedtls_ssl_write( mbedtls_ssl_context *ssl, const unsigned char *buf, size_t len );
 
 /**
+ * Version of mbedtls_ssl_write() which takes two buffer pointers to be written
+*/
+int mbedtls_ssl_write2( mbedtls_ssl_context *ssl, const unsigned char *buf1, size_t len1, const unsigned char *buf2, size_t len2 );
+
+/**
  * \brief           Send an alert message
  *
  * \param ssl       SSL context
